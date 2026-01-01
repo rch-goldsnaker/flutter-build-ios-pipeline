@@ -1,0 +1,72 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.1'
+          channel: 'stable'
+          cache: true
+      
+      - name: Flutter doctor
+        run: flutter doctor -v
+      
+      - name: Get dependencies
+        run: flutter pub get
+      
+      - name: Run tests
+        run: flutter test
+      
+      - name: Build iOS (without signing)
+        run: flutter build ios --release --no-codesign
+      
+      - name: Create IPA archive
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r app-release.ipa Payload
+          mv app-release.ipa ../../..
+      
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: app-release.ipa
+          retention-days: 30
+      
+      # Si necesitas hacer signing y distribución real, descomenta y configura:
+      # - name: Import certificates
+      #   env:
+      #     CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+      #     CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
+      #   run: |
+      #     echo "$CERTIFICATES_P12" | base64 --decode > certificate.p12
+      #     security create-keychain -p "" build.keychain
+      #     security import certificate.p12 -k ~/Library/Keychains/build.keychain -P "$CERTIFICATES_PASSWORD" -T /usr/bin/codesign
+      #     security set-keychain-settings -t 3600 -l ~/Library/Keychains/build.keychain
+      #     security unlock-keychain -p "" ~/Library/Keychains/build.keychain
+      
+      # - name: Install provisioning profile
+      #   env:
+      #     PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+      #   run: |
+      #     mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+      #     echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+      
+      # - name: Build iOS with signing
+      #   run: flutter build ipa --release
